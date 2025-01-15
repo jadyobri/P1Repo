@@ -58,7 +58,7 @@ def find_path (source_point, destination_point, mesh):
         boxes[curr_box] = True
 
         if curr_box == dest_box:
-            path = reconstruct_point_path(curr_box, prevous, detailedPoints, source_box)
+            path = reconstruct_point_path(curr_box, prevous, detailedPoints, source_box, destination_point)
             print("got done")
             return path, boxes.keys()
 
@@ -101,7 +101,7 @@ def euclidean_dist(a,b):
     (bx, by) = b
     return math.sqrt((ax-bx)**2 + (ay-by)**2)
 
-def reconstruct_point_path(end_box, prev, detail_points, start_box):
+def reconstruct_point_path(end_box, prev, detail_points, start_box, real_destination):
     #Reconstruct a 'point-level' path (list of (x,y)) from 'start_box' to 'end_box'
     #using the 'prev' dict and 'detail_points' dict.
     
@@ -118,4 +118,12 @@ def reconstruct_point_path(end_box, prev, detail_points, start_box):
     points_path = []
     for box in box_chain:
         points_path.append(detail_points[box])
+    
+    #adds line to destination if line does not make it, starts from the end of the box
+    if box_chain[-1] == end_box:
+
+        final_clamped_pt = points_path[-1]
+        if final_clamped_pt != real_destination:
+            points_path.append(real_destination)
+
     return points_path
