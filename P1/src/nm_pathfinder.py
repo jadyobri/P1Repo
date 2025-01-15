@@ -20,13 +20,14 @@ def find_path (source_point, destination_point, mesh):
     boxes_list = mesh['boxes']
     adjacency = mesh['adj']
 
-    #detail_points = {}
+    # finds boxes containing source/destination points
     source_box = get_box_for_point(mesh['boxes'], source_point)
     dest_box = get_box_for_point(mesh['boxes'], destination_point)
 
     
     path = []
     boxes = {}
+
     if(source_box is None) or (dest_box is None):
         print("No path! (Source or destination lies outside navigable ara.)")
         return path, boxes.keys()
@@ -37,19 +38,22 @@ def find_path (source_point, destination_point, mesh):
         print("Already there")
         return path, boxes.keys()
 
-    distance = {}
-    prevous = {}
-    detailedPoints = {}
+
+    distance = {} #distance[box] is cost so far from source_box
+    prevous = {} #prevous[box] which box from
+    detailedPoints = {} #detailedPoints[box] is (x,y) coord used in 'box'
 
     distance[source_box] = 0.0
     detailedPoints[source_box] = source_point
 
+    # Priority queue for (f_score, box)
     pq = []
+
+
     def heuristic(b):
         x, y = detailedPoints[b]
         dx, dy = destination_point
         return math.dist((x, y), (dx, dy))
-    print("got here")
     heapq.heappush(pq, (heuristic(source_box), source_box))
 
     while pq:
@@ -65,6 +69,7 @@ def find_path (source_point, destination_point, mesh):
         curr_g = distance[curr_box]
         currentPoint = detailedPoints[curr_box]
 
+
         for neighbor_box in adjacency[curr_box]:
             nextPoint = clamp_point_to_box(currentPoint, neighbor_box)
             edgeCost = math.dist(currentPoint, nextPoint)
@@ -78,8 +83,10 @@ def find_path (source_point, destination_point, mesh):
                 f_score = tentative_g + heuristic(neighbor_box)
                 heapq.heappush(pq, (f_score, neighbor_box))
             
-    print("done")
+    print("No path available")
     return path, boxes.keys()
+
+#Helper funcs
 
 def get_box_for_point(boxes, point):
     x, y = point
@@ -103,9 +110,9 @@ def euclidean_dist(a,b):
 
 def reconstruct_point_path(end_box, prev, detail_points, start_box, real_destination):
     #Reconstruct a 'point-level' path (list of (x,y)) from 'start_box' to 'end_box'
-    #using the 'prev' dict and 'detail_points' dict.
+    #using the 'prev' dictionary and 'detail_points' dictionary.
     
-    #recuilding chain from backwards of end to start
+    #rebuilding chain from backwards of end to start
     box_chain = []
     b = end_box
     while b != start_box:
@@ -126,4 +133,6 @@ def reconstruct_point_path(end_box, prev, detail_points, start_box, real_destina
         if final_clamped_pt != real_destination:
             points_path.append(real_destination)
 
+    #returns new path that has reconstructed points
+    #Note: in implementation, replaces old one.
     return points_path
