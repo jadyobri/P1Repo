@@ -39,11 +39,23 @@ def path_to(source_point, destination_point, source_box, destination_box, forwar
     current_box = middle_box
     dp = middle_point
 
+    #used to prevent looping, current_box and forward_path[current_box] interchange values constantly when looping
+    prev_curr = current_box
+    prev_for = forward_path[current_box]
     while current_box != source_box and forward_path.get(current_box) is not None:
+        
         sp = legal_path_between(dp, forward_path[current_box], current_box, detail_points)
         forward_path_points.append(sp)
         dp = sp
+
+        #prevents looping to check if we are not going anywhere else anymore
+        if((prev_curr == forward_path[current_box]) and (prev_for == current_box)):
+            return []
+        prev_curr = current_box
+        prev_for = forward_path[current_box]
+        
         current_box = forward_path[current_box]
+        
     
     forward_path_points.append(source_point)
 
@@ -52,11 +64,22 @@ def path_to(source_point, destination_point, source_box, destination_box, forwar
     current_box = middle_box
     dp = middle_point
 
+    #used to prevent looping, current_box and backward_path[current_box] interchange values constantly when looping
+    prev_curr = current_box
+    prev_back = backward_path[current_box]
     while current_box != destination_box and backward_path.get(current_box) is not None:
+        
         sp = legal_path_between(dp, backward_path[current_box], current_box, detail_points)
         backward_path_points.append(sp)
         dp = sp
+
+        #prevents looping to check if we are not going anywhere else anymore
+        if((prev_curr == backward_path[current_box]) and (prev_back == current_box)):
+            return []
+        prev_curr = current_box
+        prev_back = backward_path[current_box]
         current_box = backward_path[current_box]
+
     
     backward_path_points.append(destination_point)
 
@@ -110,8 +133,8 @@ def bidirectional_a_star_search(source_point, destination_point, source_box, des
             
             # if backward search has met, combine both paths
             if current_box in backward_closed:
-                return path_to(source_point, destination_point, source_box, destination_box, forward_path, backward_path, current_box, entry_point, detail_points)
-        
+                check = path_to(source_point, destination_point, source_box, destination_box, forward_path, backward_path, current_box, entry_point, detail_points)
+                return check
         # if goal reached in backward direction
         else:
             backward_closed.add(current_box)
@@ -151,7 +174,7 @@ def a_star_search(source_point, destination_point, source_box, destination_box, 
     while q:
         f_cost, current_box = heappop(q)
         visited_boxes.append(current_box)
-
+        
         # if destination box reached, reconstruct the path
         if current_box == destination_box:
             path = []
@@ -215,7 +238,7 @@ def find_path(source_point, destination_point, mesh):
 
         # performs bidirectional A* search if direct adjacency doesn't hold
         result = bidirectional_a_star_search(source_point, destination_point, source_box, destination_box, mesh["adj"], visited_boxes, detail_points)
-        if not result:
+        if not result or len(result) == 0:
             print("No path found.")
             return [], list(visited_boxes)
         else:
