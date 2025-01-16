@@ -1,10 +1,184 @@
+import queue
 import math
-import heapq
+from heapq import heappop, heappush
 
-def find_path (source_point, destination_point, mesh):
+# checks if a point lies within a box (x1, x2, y1, y2)
+def is_point_in_box(point, box):
+    x1, x2, y1, y2 = box
+    x, y = point
+    return x1 < x < x2 and y1 < y < y2
 
+# calculates euclidean distance between point 1 and point 2 (p1, p2)
+def get_euclidean_distance(p1, p2):
+    return math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
+
+# calculates valid destination point inside destination box and be reached from source point
+# path stays within boundaries of boxes and follows rules and constraints
+def legal_path_between(source_point, source_box, destination_box, detail_points):
+    x1, x2 = source_box[0], source_box[1]
+    y1, y2 = source_box[2], source_box[3]
+    p_x, p_y = source_point
+
+    # computes range for x and y coordinates where path can move following rules and constraints
+    x_range = [max(x1, destination_box[0]), min(x2, destination_box[1])]
+    y_range = [max(y1, destination_box[2]), min(y2, destination_box[3])]
+
+    # finds the valid new coordinates within the ranges
+    new_x = max(x_range[0], min(p_x, x_range[1]))
+    new_y = max(y_range[0], min(p_y, y_range[1]))
+
+    destination_point = (new_x, new_y)
+    detail_points[source_box] = destination_point
+
+    return destination_point
+
+# reconstructs path by combining forward and backward path segments
+def path_to(source_point, destination_point, source_box, destination_box, forward_path, backward_path, middle_box, middle_point, detail_points):
+    # forward path const
+    forward_path_points = [middle_point]
+    current_box = middle_box
+    dp = middle_point
+
+    while current_box != source_box and forward_path.get(current_box) is not None:
+        sp = legal_path_between(dp, forward_path[current_box], current_box, detail_points)
+        forward_path_points.append(sp)
+        dp = sp
+        current_box = forward_path[current_box]
+    
+    forward_path_points.append(source_point)
+
+    # backward path const
+    backward_path_points = []
+    current_box = middle_box
+    dp = middle_point
+
+    while current_box != destination_box and backward_path.get(current_box) is not None:
+        sp = legal_path_between(dp, backward_path[current_box], current_box, detail_points)
+        backward_path_points.append(sp)
+        dp = sp
+        current_box = backward_path[current_box]
+    
+    backward_path_points.append(destination_point)
+
+    # combines both forward and backward paths
+    return forward_path_points[::-1] + backward_path_points
+
+# performs bidirectional A* search between the source and destination points
+def bidirectional_a_star_search(source_point, destination_point, source_box, destination_box, adjacencies, visited_boxes, detail_points):
+    forward_path = {}
+    backward_path = {}
+    forward_costs = {}
+    backward_costs = {}
+    forward_closed = set()
+    backward_closed = set()
+    q = []
+    
+    # initial heuristics for A*:
+    # distance from source to destination
+    # distance from destination to source
+    forward_h = get_euclidean_distance(source_point, destination_point)
+    backward_h = get_euclidean_distance(destination_point, source_point)
+    
+    forward_costs[source_box] = (0, forward_h) # g_cost = 0, h_cost = heuristic
+    backward_costs[destination_box] = (0, backward_h)
+
+    # pushes initial positions to priority queue for the forward and backward searches
+    heappush(q, (forward_costs[source_box][1], source_box, destination_box, source_point))
+    heappush(q, (backward_costs[destination_box][1], destination_box, source_box, destination_point))
+    
+    forward_path[source_box] = None
+    backward_path[destination_box] = None
+
+    while q:
+        cost, current_box, current_goal, entry_point = heappop(q)
+        visited_boxes.append(current_box)
+
+        # if goal reached in forward direction
+        if current_goal == destination_box:
+            forward_closed.add(current_box)
+            for new_box in adjacencies[current_box]:
+                # calculates new cost and checks if forward search should continue
+                new_entry = legal_path_between(entry_point, current_box, new_box, detail_points)
+                new_g_cost = forward_costs[current_box][0] + get_euclidean_distance(new_entry, entry_point)
+                new_h_cost = get_euclidean_distance(new_entry, destination_point)
+                new_f_cost = new_g_cost + new_h_cost
+                
+                if new_box not in forward_path or new_f_cost < forward_costs[new_box][0] + forward_costs[new_box][1]:
+                    forward_path[new_box] = current_box
+                    forward_costs[new_box] = (new_g_cost, new_h_cost)
+                    heappush(q, (new_f_cost, new_box, current_goal, new_entry))
+            
+            # if backward search has met, combine both paths
+            if current_box in backward_closed:
+                return path_to(source_point, destination_point, source_box, destination_box, forward_path, backward_path, current_box, entry_point, detail_points)
+        
+        # if goal reached in backward direction
+        else:
+            backward_closed.add(current_box)
+            for new_box in adjacencies[current_box]:
+                # calculates new cost and checks if backward search should continue
+                new_entry = legal_path_between(entry_point, current_box, new_box, detail_points)
+                new_g_cost = backward_costs[current_box][0] + get_euclidean_distance(new_entry, entry_point)
+                new_h_cost = get_euclidean_distance(new_entry, source_point)
+                new_f_cost = new_g_cost + new_h_cost
+                
+                if new_box not in backward_path or new_f_cost < backward_costs[new_box][0] + backward_costs[new_box][1]:
+                    backward_path[new_box] = current_box
+                    backward_costs[new_box] = (new_g_cost, new_h_cost)
+                    heappush(q, (new_f_cost, new_box, current_goal, new_entry))
+            
+            # if forward search has met, combine both paths
+            if current_box in forward_closed:
+                return path_to(source_point, destination_point, source_box, destination_box, forward_path, backward_path, current_box, entry_point, detail_points)
+
+    return [] # no path found
+
+# performs A* search for path from source to destination
+def a_star_search(source_point, destination_point, source_box, destination_box, adjacencies, visited_boxes, detail_points):
+    came_from = {}
+    g_costs = {}
+    h_costs = {}
+    f_costs = {}
+    
+    q = []
+    heappush(q, (0, source_box)) # pushes source box into priority queue
+    g_costs[source_box] = 0
+    h_costs[source_box] = get_euclidean_distance(source_point, destination_point)
+    f_costs[source_box] = g_costs[source_box] + h_costs[source_box]
+    
+    came_from[source_box] = None
+
+    while q:
+        f_cost, current_box = heappop(q)
+        visited_boxes.append(current_box)
+
+        # if destination box reached, reconstruct the path
+        if current_box == destination_box:
+            path = []
+            while current_box is not None:
+                path.append(current_box)
+                current_box = came_from[current_box]
+            return path[::-1]
+        
+        # process each neighbor (adjacent box) to explore further
+        for new_box in adjacencies[current_box]:
+            new_g_cost = g_costs[current_box] + get_euclidean_distance(current_box, new_box)
+            new_h_cost = get_euclidean_distance(new_box, destination_point)
+            new_f_cost = new_g_cost + new_h_cost
+
+            if new_box not in came_from or new_f_cost < f_costs.get(new_box, float('inf')):
+                came_from[new_box] = current_box
+                g_costs[new_box] = new_g_cost
+                h_costs[new_box] = new_h_cost
+                f_costs[new_box] = new_f_cost
+                heappush(q, (new_f_cost, new_box))
+
+    return [] # no path found
+
+# main function: finds a path from source to destination using mesh details
+def find_path(source_point, destination_point, mesh):
     """
-    Searches for a path from source_point to destination_point through the mesh
+    Searches a path from source_point to destination_point through the mesh
 
     Args:
         source_point: starting point of the pathfinder
@@ -12,127 +186,40 @@ def find_path (source_point, destination_point, mesh):
         mesh: pathway constraints the path adheres to
 
     Returns:
-
+    
         A path (list of points) from source_point to destination_point if exists
         A list of boxes explored by the algorithm
     """
+    source_box = None
+    destination_box = None
+    visited_boxes = []
+    detail_points = {}
 
-    boxes_list = mesh['boxes']
-    adjacency = mesh['adj']
+    # identifies the box each point (the source point and destination point) is inside
+    for current_box in mesh["boxes"]:
+        if is_point_in_box(source_point, current_box):
+            source_box = current_box
+        if is_point_in_box(destination_point, current_box):
+            destination_box = current_box
 
-    # finds boxes containing source/destination points
-    source_box = get_box_for_point(mesh['boxes'], source_point)
-    dest_box = get_box_for_point(mesh['boxes'], destination_point)
+    if source_box is not None and destination_box is not None:
+        # if source and destination points are directly adjacent, return a simple path
+        if destination_box in mesh["adj"][source_box] or source_box in mesh["adj"][destination_box]:
+            mid_point = legal_path_between(source_point, destination_box, source_box, detail_points)
+            return [source_point, mid_point, destination_point], list(visited_boxes)
 
-    
-    path = []
-    boxes = {}
+        # if source and destination points are in the same box, return a simple path
+        if destination_box == source_box:
+            mid_point = legal_path_between(source_point, destination_box, source_box, detail_points)
+            return [source_point, mid_point, destination_point], list(visited_boxes)
 
-    if(source_box is None) or (dest_box is None):
-        print("No path! (Source or destination lies outside navigable ara.)")
-        return path, boxes.keys()
-    
-    if source_box == dest_box:
-        path = [source_point, destination_point]
-        boxes[source_box] = True
-        print("Already there")
-        return path, boxes.keys()
+        # performs bidirectional A* search if direct adjacency doesn't hold
+        result = bidirectional_a_star_search(source_point, destination_point, source_box, destination_box, mesh["adj"], visited_boxes, detail_points)
+        if not result:
+            print("No path found.")
+            return [], list(visited_boxes)
+        else:
+            return result, list(visited_boxes)
 
-
-    distance = {} #distance[box] is cost so far from source_box
-    prevous = {} #prevous[box] which box from
-    detailedPoints = {} #detailedPoints[box] is (x,y) coord used in 'box'
-
-    distance[source_box] = 0.0
-    detailedPoints[source_box] = source_point
-
-    # Priority queue for (f_score, box)
-    pq = []
-
-
-    def heuristic(b):
-        x, y = detailedPoints[b]
-        dx, dy = destination_point
-        return math.dist((x, y), (dx, dy))
-    heapq.heappush(pq, (heuristic(source_box), source_box))
-
-    while pq:
-        curr_f, curr_box = heapq.heappop(pq)
-        print(path)
-        boxes[curr_box] = True
-
-        if curr_box == dest_box:
-            path = reconstruct_point_path(curr_box, prevous, detailedPoints, source_box, destination_point)
-            print("got done")
-            return path, boxes.keys()
-
-        curr_g = distance[curr_box]
-        currentPoint = detailedPoints[curr_box]
-
-
-        for neighbor_box in adjacency[curr_box]:
-            nextPoint = clamp_point_to_box(currentPoint, neighbor_box)
-            edgeCost = math.dist(currentPoint, nextPoint)
-            tentative_g = curr_g + edgeCost
-
-            if(neighbor_box not in distance) or (tentative_g < distance[neighbor_box]):
-                distance[neighbor_box] = tentative_g
-                prevous[neighbor_box] = curr_box
-                detailedPoints[neighbor_box] = nextPoint
-
-                f_score = tentative_g + heuristic(neighbor_box)
-                heapq.heappush(pq, (f_score, neighbor_box))
-            
-    print("No path available")
-    return path, boxes.keys()
-
-#Helper funcs
-
-def get_box_for_point(boxes, point):
-    x, y = point
-    for b in boxes:
-        x1, x2, y1, y2 = b
-        if x1 <= x < x2 and y1 <= y < y2:
-            return b
-    return None
-
-def clamp_point_to_box(point,box):
-    x, y = point
-    x1, x2, y1, y2 = box
-    clampx = max(x1, min(x, x2 - 1))
-    clampy = max(y1, min(y, y2 - 1))
-    return(clampx, clampy)
-def euclidean_dist(a,b):
-
-    (ax,ay) = a
-    (bx, by) = b
-    return math.sqrt((ax-bx)**2 + (ay-by)**2)
-
-def reconstruct_point_path(end_box, prev, detail_points, start_box, real_destination):
-    #Reconstruct a 'point-level' path (list of (x,y)) from 'start_box' to 'end_box'
-    #using the 'prev' dictionary and 'detail_points' dictionary.
-    
-    #rebuilding chain from backwards of end to start
-    box_chain = []
-    b = end_box
-    while b != start_box:
-        box_chain.append(b)
-        b = prev[b]
-    box_chain.append(start_box)
-    box_chain.reverse()
-
-    #convert each box in chain to its detail point
-    points_path = []
-    for box in box_chain:
-        points_path.append(detail_points[box])
-    
-    #adds line to destination if line does not make it, starts from the end of the box
-    if box_chain[-1] == end_box:
-
-        final_clamped_pt = points_path[-1]
-        if final_clamped_pt != real_destination:
-            points_path.append(real_destination)
-
-    #returns new path that has reconstructed points
-    #Note: in implementation, replaces old one.
-    return points_path
+    print("Source or destination points are out of bounds!")
+    return [], list(visited_boxes) # if no valid source or destination, returns empty
